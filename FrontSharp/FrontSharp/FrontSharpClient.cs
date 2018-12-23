@@ -1,4 +1,6 @@
-﻿using FrontSharp.Interfaces;
+﻿using System.Collections.Generic;
+using System.Net;
+using FrontSharp.Interfaces;
 using FrontSharp.Logic;
 using FrontSharp.Mapping;
 using FrontSharp.Serializers;
@@ -38,6 +40,7 @@ namespace FrontSharp
             this.Messages = new MessageLogic(this);
             this.Tags = new TagLogic(this);
             this.Teammates = new TeammateLogic(this);
+			this.Teams = new TeamLogic(this);
         }
 
         //Sets RestSharp to use JSON.Net for Deserialization
@@ -66,7 +69,12 @@ namespace FrontSharp
             request.RootElement = "";
 
             var response = client.Execute<T>(request);
-
+			//Added Validation of HTTP Response code to catch Authorization and other potential issues.
+			if (!new List<HttpStatusCode>() { HttpStatusCode.OK, HttpStatusCode.Created, HttpStatusCode.Accepted, HttpStatusCode.NoContent }.Contains(response.StatusCode)) {
+				const string message = "Invalid Status Code. Response: ";
+				var webApiException = new ApplicationException(message + response.Content);
+				throw webApiException;
+			}
             //Throw Error if Exception Occurred (Usually network issues)
             if (response.ErrorException != null)
             {
@@ -130,5 +138,6 @@ namespace FrontSharp
         public IMessageLogic Messages { get; private set; }
         public ITagLogic Tags { get; private set; }
         public ITeammateLogic Teammates { get; private set; }
+		public ITeamLogic Teams { get; private set; }
     }
 }
