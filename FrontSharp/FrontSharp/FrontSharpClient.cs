@@ -9,6 +9,8 @@ using RestSharp.Authenticators;
 using RestSharp.Extensions;
 using System;
 using System.Configuration;
+using FrontSharp.Models;
+using Newtonsoft.Json.Converters;
 
 namespace FrontSharp
 {
@@ -18,6 +20,9 @@ namespace FrontSharp
         private string _token;
 
         public string BaseUrl { get => _baseUrl; set => _baseUrl = value; }
+		//public string ResponseContent;
+		//public HttpStatusCode ResponseCode;
+		public ErrorResponseRoot FrontError = new ErrorResponseRoot();
 
         public FrontSharpClient() : this(ConfigurationManager.AppSettings["FrontAPIEndpoint"].ToString(), ConfigurationManager.AppSettings["FrontAPIToken"].ToString())
         {
@@ -67,10 +72,13 @@ namespace FrontSharp
             var client = CreateClient(_baseUrl);
             client.Authenticator = new JwtAuthenticator(_token); // used on every request
             request.RootElement = "";
-
+			
             var response = client.Execute<T>(request);
+			//ResponseContent = response.Content;
+			//ResponseCode = response.StatusCode;
 			//Added Validation of HTTP Response code to catch Authorization and other potential issues.
 			if (!new List<HttpStatusCode>() { HttpStatusCode.OK, HttpStatusCode.Created, HttpStatusCode.Accepted, HttpStatusCode.NoContent }.Contains(response.StatusCode)) {
+				FrontError = Newtonsoft.Json.JsonConvert.DeserializeObject<ErrorResponseRoot>(response.Content);
 				const string message = "Invalid Status Code. Response: ";
 				var webApiException = new ApplicationException(message + response.Content);
 				throw webApiException;
@@ -84,8 +92,33 @@ namespace FrontSharp
             }
             return response.Data;
         }
+		public void Execute(RestRequest request, object objToBeSerialized = null, NewtonsoftJsonSerializer serializer = null) {
+			//Set Defaults for request
+			request.RequestFormat = DataFormat.Json;
+			request.JsonSerializer = serializer != null ? serializer : NewtonsoftJsonSerializer.Default;
+			request.AddHeader("Content-Type", "application/json");
+			if (objToBeSerialized != null) request.AddJsonBody(objToBeSerialized);
 
-        public T ExecuteURL<T>(string url, NewtonsoftJsonSerializer serializer = null) where T : new()
+			var client = CreateClient(_baseUrl);
+			client.Authenticator = new JwtAuthenticator(_token); // used on every request
+			request.RootElement = "";
+
+			var response = client.Execute(request);
+			//Added Validation of HTTP Response code to catch Authorization and other potential issues.
+			if (!new List<HttpStatusCode>() { HttpStatusCode.OK, HttpStatusCode.Created, HttpStatusCode.Accepted, HttpStatusCode.NoContent }.Contains(response.StatusCode)) {
+				const string message = "Invalid Status Code. Response: ";
+				var webApiException = new ApplicationException(message + response.Content);
+				throw webApiException;
+			}
+			//Throw Error if Exception Occurred (Usually network issues)
+			if (response.ErrorException != null) {
+				const string message = "Error retrieving response.  Check inner details for more info.";
+				var webApiException = new ApplicationException(message, response.ErrorException);
+				throw webApiException;
+			}
+		}
+
+		public T ExecuteURL<T>(string url, NewtonsoftJsonSerializer serializer = null) where T : new()
         {
             var request = new RestRequest();
 
